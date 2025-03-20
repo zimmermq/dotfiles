@@ -85,7 +85,7 @@ alias test-file='truncate -s 10M test-file' # Create a test file of 10MB
 # ------------------------------------------------------------------------------
 #  GitHub Copilot
 # ------------------------------------------------------------------------------
-gh extension list | grep -q "gh[- ]copilot" || _echo_exit " Install the GitHub Copilot extension for github cli: > gh extension install github/gh-copilot"
+#gh extension list | grep -q "gh[- ]copilot" || _echo_exit " Install the GitHub Copilot extension for github cli: > gh extension install github/gh-copilot"
 
 # ------------------------------------------------------------------------------
 #  Alias not to be expanded
