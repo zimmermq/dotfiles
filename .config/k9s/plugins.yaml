@@ -1,7 +1,55 @@
 plugins:
+  copy-yaml:
+    shortCut: Ctrl-Y
+    description: "Copy resource YAML definition to clipboard"
+    scopes:
+      - all
+    command: zsh
+    background: false
+    args:
+      - -c
+      - |
+        # Copy the YAML definition of a Kubernetes resource to clipboard
+        set -euo pipefail
+        
+        echo "📋 Copying YAML for $RESOURCE_NAME/$NAME in namespace $NAMESPACE..."
+        
+        # Determine the clipboard command based on OS
+        if command -v pbcopy &> /dev/null; then
+          # macOS
+          CLIPBOARD_CMD="pbcopy"
+        elif command -v xclip &> /dev/null; then
+          # Linux with xclip
+          CLIPBOARD_CMD="xclip -selection clipboard"
+        elif command -v xsel &> /dev/null; then
+          # Linux with xsel
+          CLIPBOARD_CMD="xsel --clipboard --input"
+        elif command -v wl-copy &> /dev/null; then
+          # Wayland
+          CLIPBOARD_CMD="wl-copy"
+        elif command -v clip.exe &> /dev/null; then
+          # Windows
+          CLIPBOARD_CMD="clip.exe"
+        else
+          echo "❌ No clipboard command found (pbcopy, xclip, xsel, wl-copy, or clip.exe)"
+          echo "YAML will be displayed but not copied"
+          CLIPBOARD_CMD="cat"
+        fi
+        
+        # Get the resource YAML definition and copy to clipboard
+        if ! kubectl get "$RESOURCE_NAME" -n "$NAMESPACE" "$NAME" -o yaml --context "$CONTEXT" | tee >(eval "$CLIPBOARD_CMD"); then
+          echo "❌ Failed to get resource YAML - check resource name and permissions"
+          echo "Press enter to continue"
+          read
+          exit 1
+        fi
+        
+        echo "✅ YAML copied to clipboard successfully"
+        echo "Press enter to continue"
+        read
   exec-cluster:
     shortCut: Ctrl-X
-    description: "K9s to cluster"
+    description: "Connect to cluster with MSCC"
     scopes:
       - kubernetesclusters
       - xkubernetesclusters
@@ -9,7 +57,21 @@ plugins:
     background: false
     args:
       - -c
-      - "mscc k8s $NAME; k9s --kubeconfig /tmp/kubeconfig"
+      - |
+        # Connect to a specific cluster and launch K9s with its configuration
+        set -euo pipefail
+        
+        echo "📡 Connecting to cluster: $NAME..."
+        if ! mscc k8s "$NAME"; then
+          echo "❌ Failed to connect to cluster"
+          echo "Press enter to continue"
+          read
+          exit 1
+        fi
+        
+        echo "✅ Connection successful, launching K9s"
+        k9s --kubeconfig /tmp/kubeconfig
+  
   test-cluster:
     shortCut: Ctrl-T
     description: "Test cluster with MSCC-CLI"
@@ -20,20 +82,168 @@ plugins:
     background: false
     args:
       - -c
-      - "mscc k8s $NAME -t; echo 'Press enter to continue'; read"
-  beta-trace:
+      - |
+        # Run test operations on the selected cluster
+        set -euo pipefail
+        
+        echo "🧪 Testing cluster: $NAME..."
+        if ! mscc k8s "$NAME" -t; then
+          echo "❌ Test failed"
+        else
+          echo "✅ Test completed successfully"
+        fi
+        
+        echo "Press enter to continue"
+        read
+  
+  resource-trace:
     shortCut: Ctrl-B
-    description: "Beta Trace"
+    description: "Trace Crossplane resource dependencies"
     scopes:
-      - xkubernetesclusters
+      - all
     command: zsh
     background: false
     args:
       - -c
-      - "crossplane beta trace XKubernetesCluster -n $NAMESPACE $NAME; echo 'Press enter to continue'; read'"
-  cnpg-backup:
+      - |
+        # Trace dependencies for any Crossplane-managed resource
+        set -euo pipefail
+        
+        echo "🔍 Analyzing resource: $NAME in namespace: $NAMESPACE"
+        
+        # Dynamically determine resource kind
+        if ! kind=$(kubectl get "$RESOURCE_NAME" -n "$NAMESPACE" "$NAME" -o=jsonpath='{.kind}' 2>/dev/null); then
+          echo "❌ Failed to determine resource kind - is this a valid resource?"
+          echo "Press enter to continue"
+          read
+          exit 1
+        fi
+        
+        echo "📊 Resource kind: $kind - Running dependency trace"
+        
+        # Run crossplane trace with proper error handling
+        if ! watch crossplane beta trace "$kind" -n "$NAMESPACE" "$NAME"; then
+          echo "❌ Trace failed - is this a Crossplane-managed resource?"
+        else
+          echo "✅ Trace completed"
+        fi
+        
+        echo "Press enter to continue"
+        read
+
+  watch-events:
+    shortCut: Shift-E
+    description: "Watch resource events in real-time"
+    scopes:
+      - all
+    command: zsh
+    background: false
+    args:
+      - -c
+      - |
+        # Stream Kubernetes events for the selected resource
+        set -euo pipefail
+        
+        echo "👁️ Watching events for $RESOURCE_NAME/$NAME in namespace $NAMESPACE"
+        echo "⌨️ Press Ctrl+C to exit"
+        
+        # Use kubectl events command with proper error handling
+        if ! kubectl events --context "$CONTEXT" --namespace "$NAMESPACE" \
+           --for "$RESOURCE_NAME.$RESOURCE_GROUP/$NAME" --watch; then
+          echo "❌ Failed to watch events - check resource name and permissions"
+          echo "Press enter to continue"
+          read
+          exit 1
+        fi
+
+  argocd-sync:
+    shortCut: s
+    description: "Sync ArgoCD Application"
+    scopes:
+      - application
+    command: zsh
+    background: true
+    confirm: true
+    args:
+      - -c
+      - |
+        # Synchronize an ArgoCD application
+        set -euo pipefail
+        
+        echo "🔄 Starting sync for ArgoCD application: $NAME in namespace: $NAMESPACE"
+        
+        if ! argocd app sync "$NAME" --app-namespace "$NAMESPACE"; then
+          # We don't show this error since the command runs in background
+          # but we'll log it to the background process
+          echo "❌ Sync failed for application: $NAME" >&2
+          exit 1
+        fi
+
+  pg-status:
+    shortCut: s
+    description: "Show database status"
+    scopes:
+      - cluster
+    command: zsh
+    background: false
+    args:
+      - -c
+      - |
+        # Display database cluster status
+        set -euo pipefail
+        echo "📊 Retrieving status for $NAME in namespace $NAMESPACE"
+        kubectl cnpg status "$NAME" -n "$NAMESPACE" --context "$CONTEXT" |& less -R
+
+  pg-status-verbose:
+    shortCut: Shift-S
+    description: "Show detailed database status"
+    scopes:
+      - cluster
+    command: zsh
+    background: false
+    args:
+      - -c
+      - |
+        # Display detailed database cluster status
+        set -euo pipefail
+        echo "🔍 Retrieving detailed status for $NAME in namespace $NAMESPACE"
+        kubectl cnpg status "$NAME" -n "$NAMESPACE" --context "$CONTEXT" --verbose |& less -R
+
+  pg-logs:
+    shortCut: l
+    description: "View database logs"
+    scopes:
+      - cluster
+    command: zsh
+    background: false
+    args:
+      - -c
+      - |
+        # Stream logs from the database cluster
+        set -euo pipefail
+        echo "📜 Streaming logs for $NAME in namespace $NAMESPACE"
+        kubectl cnpg logs cluster "$NAME" -f -n "$NAMESPACE" --context "$CONTEXT"
+
+  pg-shell:
+    shortCut: p
+    description: "Open PostgreSQL shell"
+    scopes:
+      - cluster
+    command: zsh
+    background: false
+    args:
+      - -c
+      - |
+        # Open an interactive PSQL shell to the database
+        set -euo pipefail
+        echo "🐘 Opening PostgreSQL shell for $NAME in namespace $NAMESPACE"
+        kubectl cnpg psql "$NAME" -n "$NAMESPACE" --context "$CONTEXT"
+
+  # --- Database Maintenance Operations ---
+
+  pg-backup:
     shortCut: b
-    description: Backup
+    description: "Create database backup"
     scopes:
       - cluster
     command: zsh
@@ -41,20 +251,64 @@ plugins:
     background: false
     args:
       - -c
-      - "kubectl cnpg backup $NAME -n $NAMESPACE --context \"$CONTEXT\" |& less -R"
-  cnpg-hibernate-status:
+      - |
+        # Create a backup of the database cluster
+        set -euo pipefail
+        echo "💾 Creating backup for $NAME in namespace $NAMESPACE"
+        kubectl cnpg backup "$NAME" -n "$NAMESPACE" --context "$CONTEXT" |& less -R
+
+  pg-reload:
+    shortCut: r
+    description: "Reload database configuration"
+    confirm: true
+    scopes:
+      - cluster
+    command: zsh
+    background: false
+    args:
+      - -c
+      - |
+        # Reload database configuration without restart
+        set -euo pipefail
+        echo "🔄 Reloading configuration for $NAME in namespace $NAMESPACE"
+        kubectl cnpg reload "$NAME" -n "$NAMESPACE" --context "$CONTEXT" |& less -R
+
+  pg-restart:
+    shortCut: Shift-R
+    description: "Restart database cluster"
+    confirm: true
+    scopes:
+      - cluster
+    command: zsh
+    background: false
+    args:
+      - -c
+      - |
+        # Restart the database cluster
+        set -euo pipefail
+        echo "🔄 Restarting cluster $NAME in namespace $NAMESPACE"
+        kubectl cnpg restart "$NAME" -n "$NAMESPACE" --context "$CONTEXT" |& less -R
+
+  # --- Hibernation Controls ---
+
+  pg-hibernate-status:
     shortCut: h
-    description: Hibernate status
+    description: "Check database hibernate status"
     scopes:
       - cluster
     command: zsh
     background: false
     args:
       - -c
-      - "kubectl cnpg hibernate status $NAME -n $NAMESPACE --context \"$CONTEXT\" |& less -R"
-  cnpg-hibernate:
+      - |
+        # Check hibernate status of database cluster
+        set -euo pipefail
+        echo "💤 Checking hibernation status for $NAME in namespace $NAMESPACE"
+        kubectl cnpg hibernate status "$NAME" -n "$NAMESPACE" --context "$CONTEXT" |& less -R
+
+  pg-hibernate:
     shortCut: Shift-H
-    description: Hibernate
+    description: "Hibernate database cluster"
     confirm: true
     scopes:
       - cluster
@@ -62,10 +316,15 @@ plugins:
     background: false
     args:
       - -c
-      - "kubectl cnpg hibernate on $NAME -n $NAMESPACE --context \"$CONTEXT\" |& less -R"
-  cnpg-hibernate-off:
-    shortCut: Shift-H
-    description: Wake up hibernated cluster in this namespace
+      - |
+        # Put database cluster into hibernation
+        set -euo pipefail
+        echo "💤 Hibernating cluster $NAME in namespace $NAMESPACE"
+        kubectl cnpg hibernate on "$NAME" -n "$NAMESPACE" --context "$CONTEXT" |& less -R
+
+  pg-hibernate-off:
+    shortCut: Shift-W
+    description: "Wake up hibernated cluster"
     confirm: true
     scopes:
       - namespace
@@ -73,66 +332,46 @@ plugins:
     background: false
     args:
       - -c
-      - "kubectl cnpg hibernate off $NAME -n $NAME --context \"$CONTEXT\" |& less -R"
-  cnpg-logs:
-    shortCut: l
-    description: Logs
+      - |
+        # Wake up a hibernated database cluster
+        set -euo pipefail
+        echo "⏰ Waking up hibernated clusters in namespace $NAME"
+        kubectl cnpg hibernate off "$NAME" -n "$NAME" --context "$CONTEXT" |& less -R
+
+  download-kubeconfig:
+    shortCut: Ctrl-J
+    description: "Download kubeConfig to ~/.kube/config.d/"
     scopes:
-      - cluster
+      - xkubernetesclusters
     command: zsh
     background: false
     args:
       - -c
-      - "kubectl cnpg logs cluster $NAME -f -n $NAMESPACE --context $CONTEXT"
-  cnpg-psql:
-    shortCut: p
-    description: PSQL shell
-    scopes:
-      - cluster
-    command: zsh
-    background: false
-    args:
-      - -c
-      - "kubectl cnpg psql $NAME -n $NAMESPACE --context $CONTEXT"
-  cnpg-reload:
-    shortCut: r
-    description: Reload
-    confirm: true
-    scopes:
-      - cluster
-    command: zsh
-    background: false
-    args:
-      - -c
-      - "kubectl cnpg reload $NAME -n $NAMESPACE --context \"$CONTEXT\" |& less -R"
-  cnpg-restart:
-    shortCut: Shift-R
-    description: Restart
-    confirm: true
-    scopes:
-      - cluster
-    command: zsh
-    background: false
-    args:
-      - -c
-      - "kubectl cnpg restart $NAME -n $NAMESPACE --context \"$CONTEXT\" |& less -R"
-  cnpg-status:
-    shortCut: s
-    description: Status
-    scopes:
-      - cluster
-    command: zsh
-    background: false
-    args:
-      - -c
-      - "kubectl cnpg status $NAME -n $NAMESPACE --context \"$CONTEXT\" |& less -R"
-  cnpg-status-verbose:
-    shortCut: Shift-S
-    description: Status (verbose)
-    scopes:
-      - cluster
-    command: zsh
-    background: false
-    args:
-      - -c
-      - "kubectl cnpg status $NAME -n $NAMESPACE --context \"$CONTEXT\" --verbose |& less -R"
+      - |
+        # Download kubeConfig for xkubernetesclusters resource
+        set -euo pipefail
+        
+        echo "📥 Downloading kubeConfig for: $NAME"
+        
+        # Ensure the directory exists
+        mkdir -p ~/.kube/config.d/
+        
+        # Set the path using just the resource name
+        CONFIG_PATH=~/.kube/config.d/${NAME}
+        
+        echo "📁 Saving to: $CONFIG_PATH"
+        
+        # Extract the kubeConfig, decode it, and save it directly to the final path
+        if ! kubectl get xkubernetesclusters.k8s.ms.infinity.cgm.ag "$NAME" -o jsonpath='{.status.kubeConfig}' | base64 -d > "$CONFIG_PATH"; then
+          echo "❌ Failed to download kubeConfig"
+          echo "Press enter to continue"
+          read
+          exit 1
+        fi
+        
+        # Set appropriate permissions
+        chmod 600 "$CONFIG_PATH"
+        
+        echo "✅ KubeConfig downloaded successfully to: $CONFIG_PATH"
+        echo "Press enter to continue"
+        read
