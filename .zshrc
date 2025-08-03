@@ -86,7 +86,7 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
 
-alias terraform='tofu'
+# alias terraform='tofu'
 # zsh-abbr
 # zellij terraform tmux globalias iterm2 cp git battery kubectl kubectx kube-ps1 git cp zbell jsontools mvn alias-finder aws dirhistory docker helm zsh-autosuggestions zsh-syntax-highlighting)
 # zsh-vi-mode
@@ -123,3 +123,8 @@ fi
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+alias claude="/home/michael/.claude/local/claude"
+
+export NVM_DIR="$HOME/.config/nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
