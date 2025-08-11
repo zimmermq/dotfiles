@@ -4,6 +4,11 @@
 
 # eval $(/opt/homebrew/bin/brew shellenv)
 
+# Disable compinit insecure directories check (only in WSL)
+if [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
+  export ZSH_DISABLE_COMPFIX="true"
+fi
+
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
@@ -15,7 +20,6 @@ fi
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 
 # Path to your oh-my-zsh installation.
-ZSH_DISABLE_COMPFIX="true"
 export ZSH="$HOME/.oh-my-zsh"
 
 export ZPWR_EXPAND_BLACKLIST=(grep ls tmux)

@@ -2,5 +2,8 @@
 unsetopt BEEP
 
 # Load and initialize the completion system
-autoload -Uz compinit
-compinit
+# Only run compinit if not in WSL (oh-my-zsh handles it in WSL)
+if [[ ! -f /proc/sys/fs/binfmt_misc/WSLInterop ]]; then
+  autoload -Uz compinit
+  compinit
+fi
