@@ -1,6 +1,6 @@
 [user]
-  name = Jonas Hess
-  email = Jonas@Hess.pm
+	name = Michael Zimmermann
+	email = m.zimmermann@mvb-online.de
 [core]
   editor = nvim
   excludesfile = ~/.gitignore
@@ -14,8 +14,6 @@
   defaultBranch = main
 [web]
   browser = firefox
-[credential]
-  helper = osxkeychain
 [push]
   default = simple
 [merge]
@@ -34,3 +32,9 @@
 	rebase = true
 [url "https://token:@git.cgm.ag"]
 	insteadOf = https://git.cgm.ag
+[credential "https://github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
